@@ -1,0 +1,165 @@
+﻿@page "/"
+@using BlazorPokeApi.Layout.Models
+@using System.Net
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject HttpClient Http
+
+<PageTitle>Consulta Pokémon</PageTitle>
+
+<h1>Consulta Pokémon</h1>
+
+<div class="mb-3">
+    <label for="pokemon" class="form-label">
+        Nome ou número do Pokémon:
+    </label>
+
+    <input id="pokemon"
+           class="form-control"
+           @bind="busca"
+           placeholder="Ex.: ditto ou 132"
+           disabled="@carregando" />
+</div>
+
+<button class="btn btn-primary"
+        @onclick="ConsultarPokemon"
+        disabled="@carregando">
+    @(carregando ? "Consultando..." : "Consultar")
+</button>
+
+@if (!string.IsNullOrWhiteSpace(mensagem))
+{
+    <div class="alert alert-warning mt-3" role="alert">
+        @mensagem
+    </div>
+}
+
+@if (pokemon is not null)
+{
+    <div class="card mt-3">
+        <div class="card-body">
+            <h2 class="h4">@pokemon.name</h2>
+
+            @if (!string.IsNullOrWhiteSpace(pokemon.sprites?.front_default))
+            {
+                <img src="@pokemon.sprites.front_default"
+                     alt="@($"Imagem de {pokemon.name}")"
+                     width="150"
+                     height="150" />
+            }
+
+            <p><strong>Número:</strong> @pokemon.id</p>
+            <p><strong>Altura:</strong> @(pokemon.height / 10.0) m</p>
+            <p><strong>Peso:</strong> @(pokemon.weight / 10.0) kg</p>
+            <p><strong>Experiência base:</strong> @pokemon.base_experience</p>
+
+            <h3 class="h5">Tipos</h3>
+
+            @if (pokemon.types is not null)
+            {
+                <ul>
+                    @foreach (var item in pokemon.types)
+                    {
+                        <li>@item.type?.name</li>
+                    }
+                </ul>
+            }
+
+            <h3 class="h5">Habilidades</h3>
+
+            @if (pokemon.abilities is not null)
+            {
+                <ul>
+                    @foreach (var item in pokemon.abilities)
+                    {
+                        <li>
+                            @item.ability?.name
+                            @(item.is_hidden ? "(oculta)" : "")
+                        </li>
+                    }
+                </ul>
+            }
+
+            <h3 class="h5">Estatísticas</h3>
+
+            @if (pokemon.stats is not null)
+            {
+                <ul>
+                    @foreach (var item in pokemon.stats)
+                    {
+                        <li>@item.stat?.name: @item.base_stat</li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string busca = "ditto";
+    private string mensagem = string.Empty;
+    private Root? pokemon;
+    private bool carregando;
+
+    private async Task ConsultarPokemon()
+    {
+        if (carregando)
+            return;
+
+        mensagem = string.Empty;
+        pokemon = null;
+
+        if (string.IsNullOrWhiteSpace(busca))
+        {
+            mensagem = "Digite o nome ou o número de um Pokémon.";
+            return;
+        }
+
+        carregando = true;
+
+        try
+        {
+            string termo = busca.Trim().ToLowerInvariant();
+            string url =
+                $"https://pokeapi.co/api/v2/pokemon/{Uri.EscapeDataString(termo)}";
+
+            using var resposta = await Http.GetAsync(url);
+
+            if (resposta.StatusCode == HttpStatusCode.NotFound)
+            {
+                mensagem = "Pokémon não encontrado. Confira o nome ou número.";
+                return;
+            }
+
+            if (!resposta.IsSuccessStatusCode)
+            {
+                mensagem = "Não foi possível consultar a API. Tente novamente.";
+                return;
+            }
+
+            pokemon = await resposta.Content.ReadFromJsonAsync<Root>();
+
+            if (pokemon is null)
+            {
+                mensagem = "A API retornou uma resposta vazia.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            mensagem = "Erro de conexão com a API. Tente novamente.";
+        }
+        catch (TaskCanceledException)
+        {
+            mensagem = "A consulta demorou demais. Tente novamente.";
+        }
+        catch (JsonException)
+        {
+            mensagem = "Erro ao converter a resposta. Confira os modelos.";
+        }
+        finally
+        {
+            carregando = false;
+        }
+    }
+}
